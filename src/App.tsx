@@ -16,9 +16,11 @@ import {
 
 // Layout
 import { Navbar } from './components/layout/Navbar';
+import { GlobalSearchBar } from './components/layout/GlobalSearchBar';
 import { Footer } from './components/layout/Footer';
 import { DashboardLayout } from './components/layout/DashboardLayout';
 import { ToastContainer, ToastMessage } from './components/common/NotificationToast';
+import { triggerDocumentDownload } from './utils/downloadHelper';
 
 // Public Pages
 import { Home } from './pages/public/Home';
@@ -44,7 +46,7 @@ import { BendaharaDashboard } from './pages/dashboard/BendaharaDashboard';
 import { GuruDashboard } from './pages/dashboard/GuruDashboard';
 
 // Lucide
-import { FileText, Download, X, Eye, ExternalLink } from 'lucide-react';
+import { FileText, Download, X, ExternalLink, Copy, Check } from 'lucide-react';
 
 export default function App() {
   // Navigation & Session State
@@ -66,9 +68,11 @@ export default function App() {
   const [aspirasiList, setAspirasiList] = useState<Aspirasi[]>([]);
   const [galeriList, setGaleriList] = useState<GaleriItem[]>([]);
 
-  // Modals
+  // Modals & Deep Links
   const [selectedArticle, setSelectedArticle] = useState<BeritaPengumuman | null>(null);
+  const [selectedForumTopic, setSelectedForumTopic] = useState<ForumTopic | null>(null);
   const [previewDoc, setPreviewDoc] = useState<PerangkatAjar | null>(null);
+  const [copiedDocLink, setCopiedDocLink] = useState<boolean>(false);
 
   // Toast Notifications
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
@@ -104,7 +108,66 @@ export default function App() {
     setCurrentRole(role);
     setCurrentUser(StorageService.getCurrentUser());
     refreshAllData();
+
+    const params = new URLSearchParams(window.location.search);
+    const sharedPerangkatId = params.get('perangkat');
+    if (sharedPerangkatId) {
+      const matched = StorageService.getPerangkat().find((d) => d.id === sharedPerangkatId);
+      if (matched) {
+        setCurrentPage('perangkat');
+        setPreviewDoc(matched);
+      }
+    }
   }, []);
+
+  useEffect(() => {
+    setCopiedDocLink(false);
+  }, [previewDoc]);
+
+  const handleCopyDocLink = async (doc: PerangkatAjar) => {
+    const linkToCopy =
+      doc.driveUrl ||
+      `${window.location.origin}${window.location.pathname}?perangkat=${encodeURIComponent(doc.id)}`;
+
+    let copied = false;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      try {
+        await navigator.clipboard.writeText(linkToCopy);
+        copied = true;
+      } catch {
+        copied = false;
+      }
+    }
+
+    if (!copied) {
+      const textarea = document.createElement('textarea');
+      textarea.value = linkToCopy;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.select();
+      try {
+        copied = document.execCommand('copy');
+      } catch {
+        copied = false;
+      }
+      document.body.removeChild(textarea);
+    }
+
+    if (copied) {
+      setCopiedDocLink(true);
+      showToast(
+        'Tautan Disalin',
+        doc.driveUrl
+          ? `Tautan Google Drive "${doc.title}" siap dibagikan ke guru lain.`
+          : `Tautan perangkat ajar "${doc.title}" siap dibagikan ke guru lain.`,
+        'success'
+      );
+      setTimeout(() => setCopiedDocLink(false), 2500);
+    } else {
+      showToast('Gagal Menyalin', 'Silakan salin tautan secara manual dari peramban.', 'error');
+    }
+  };
 
   // Handle Role Switching
   const handleRoleChange = (newRole: UserRole) => {
@@ -223,8 +286,11 @@ export default function App() {
             beritaList={beritaList}
             administrasiList={administrasiList}
             aspirasiList={aspirasiList}
+            activeTab={dashboardTab}
+            onTabChange={setDashboardTab}
             onNavigatePublic={setCurrentPage}
             onShowToast={showToast}
+            onDataRefresh={refreshAllData}
           />
         );
       case 'bendahara':
@@ -232,6 +298,8 @@ export default function App() {
           <BendaharaDashboard
             currentUser={currentUser}
             transaksiList={transaksiList}
+            activeTab={dashboardTab}
+            onTabChange={setDashboardTab}
             onAddTransaksi={handleAddTransaksi}
             onNavigatePublic={setCurrentPage}
             onShowToast={showToast}
@@ -246,8 +314,12 @@ export default function App() {
             perangkatList={perangkatList}
             forumTopics={forumTopics}
             aspirasiList={aspirasiList}
+            activeTab={dashboardTab}
+            onTabChange={setDashboardTab}
             onNavigatePublic={setCurrentPage}
             onUpdateUser={handleUpdateUser}
+            onAddAspirasi={handleAddAspirasi}
+            onPreviewPerangkat={setPreviewDoc}
             onShowToast={showToast}
           />
         );
@@ -266,7 +338,10 @@ export default function App() {
             beritaList={beritaList}
             onOpenLogin={() => setIsLoginModalOpen(true)}
             onPreviewPerangkat={setPreviewDoc}
-            onOpenBerita={(item) => setSelectedArticle(item)}
+            onOpenBerita={(item) => {
+              setSelectedArticle(item);
+              setCurrentPage('berita');
+            }}
           />
         );
       case 'profil':
@@ -289,6 +364,8 @@ export default function App() {
             onAddTopic={handleAddForumTopic}
             onAddComment={handleAddForumComment}
             onShowToast={showToast}
+            selectedTopic={selectedForumTopic}
+            onSelectTopic={setSelectedForumTopic}
           />
         );
       case 'perangkat':
@@ -355,7 +432,7 @@ export default function App() {
           />
         );
       case 'galeri':
-        return <GaleriKegiatan />;
+        return <GaleriKegiatan galeriList={galeriList} onShowToast={showToast} />;
       case 'kontak':
         return <Kontak onShowToast={showToast} />;
       case 'login':
@@ -374,7 +451,10 @@ export default function App() {
             beritaList={beritaList}
             onOpenLogin={() => setIsLoginModalOpen(true)}
             onPreviewPerangkat={setPreviewDoc}
-            onOpenBerita={(item) => setSelectedArticle(item)}
+            onOpenBerita={(item) => {
+              setSelectedArticle(item);
+              setCurrentPage('berita');
+            }}
           />
         );
     }
@@ -403,7 +483,11 @@ export default function App() {
         <>
           <Navbar
             currentPage={currentPage}
-            onNavigate={setCurrentPage}
+            onNavigate={(page) => {
+              if (page !== 'forum') setSelectedForumTopic(null);
+              if (page !== 'berita') setSelectedArticle(null);
+              setCurrentPage(page);
+            }}
             currentRole={currentRole}
             onRoleChange={handleRoleChange}
             isLoggedIn={isLoggedIn}
@@ -411,9 +495,38 @@ export default function App() {
             onLogout={handleLogout}
           />
 
+          <GlobalSearchBar
+            perangkatList={perangkatList}
+            beritaList={beritaList}
+            forumTopics={forumTopics}
+            onSelectPerangkat={(doc) => {
+              setCurrentPage('perangkat');
+              setPreviewDoc(doc);
+            }}
+            onSelectBerita={(item) => {
+              setSelectedArticle(item);
+              setCurrentPage('berita');
+            }}
+            onSelectForumTopic={(topic) => {
+              setSelectedForumTopic(topic);
+              setCurrentPage('forum');
+            }}
+            onNavigate={(page) => {
+              if (page !== 'forum') setSelectedForumTopic(null);
+              if (page !== 'berita') setSelectedArticle(null);
+              setCurrentPage(page);
+            }}
+          />
+
           <main className="flex-1">{renderPublicPage()}</main>
 
-          <Footer onNavigate={setCurrentPage} />
+          <Footer
+            onNavigate={(page) => {
+              if (page !== 'forum') setSelectedForumTopic(null);
+              if (page !== 'berita') setSelectedArticle(null);
+              setCurrentPage(page);
+            }}
+          />
         </>
       )}
 
@@ -497,7 +610,28 @@ export default function App() {
               <span className="text-xs text-slate-400 font-mono">
                 {previewDoc.downloadCount} kali diunduh
               </span>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleCopyDocLink(previewDoc)}
+                  className={`px-3.5 py-2 border rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer shadow-xs ${
+                    copiedDocLink
+                      ? 'bg-emerald-50 border-emerald-300 text-emerald-800'
+                      : 'bg-white hover:bg-stone-50 border-stone-300 text-slate-700'
+                  }`}
+                >
+                  {copiedDocLink ? (
+                    <>
+                      <Check className="w-3.5 h-3.5 text-emerald-600" />
+                      <span>Tersalin</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-3.5 h-3.5 text-rose-700" />
+                      <span>Salin Tautan</span>
+                    </>
+                  )}
+                </button>
                 {previewDoc.driveUrl && (
                   <a
                     href={previewDoc.driveUrl}
@@ -511,6 +645,24 @@ export default function App() {
                 )}
                 <button
                   onClick={() => {
+                    StorageService.updatePerangkat({
+                      ...previewDoc,
+                      downloadCount: (previewDoc.downloadCount || 0) + 1,
+                    });
+                    refreshAllData();
+                    triggerDocumentDownload(
+                      `${previewDoc.title}.${previewDoc.fileFormat.toLowerCase()}.txt`,
+                      previewDoc.title,
+                      {
+                        Kategori: previewDoc.category,
+                        'Mata Pelajaran': previewDoc.subject,
+                        'Fase / Kelas': previewDoc.gradeLevel,
+                        Pengunggah: `${previewDoc.uploaderName} (${previewDoc.uploaderSchool})`,
+                        'Format & Ukuran': `${previewDoc.fileFormat} (${previewDoc.fileSize})`,
+                        'Link Drive': previewDoc.driveUrl,
+                        Deskripsi: previewDoc.description,
+                      }
+                    );
                     showToast('Mengunduh Perangkat Ajar', `${previewDoc.title} (${previewDoc.fileFormat}) berhasil diunduh.`, 'success');
                     setPreviewDoc(null);
                   }}

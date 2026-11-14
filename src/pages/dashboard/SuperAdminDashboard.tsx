@@ -67,6 +67,7 @@ import {
   WebsiteConfig,
 } from '../../types';
 import { StorageService } from '../../services/storageService';
+import { triggerDocumentDownload } from '../../utils/downloadHelper';
 
 interface SuperAdminProps {
   currentUser: UserProfile;
@@ -132,11 +133,13 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({
     }).format(val);
   };
 
+  const [deleteConfirm, setDeleteConfirm] = useState<{
+    name: string;
+    callback: () => void;
+  } | null>(null);
+
   const confirmDelete = (name: string, callback: () => void) => {
-    if (window.confirm(`SUPER ADMIN: Anda yakin ingin menghapus "${name}"? Tindakan ini akan dicatat dalam Audit Log.`)) {
-      callback();
-      onDataRefresh();
-    }
+    setDeleteConfirm({ name, callback });
   };
 
   // USER MANAGEMENT HANDLERS
@@ -1522,13 +1525,13 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({
                   Mengembalikan seluruh data portal ke konfigurasi awal bawaan template Gugus 01 Bluto. Berguna saat pengujian fitur simulasi selesai.
                 </p>
                 <button
-                  onClick={() => {
-                    if (window.confirm('Reset seluruh data demonstrasi lokal?')) {
+                  onClick={() =>
+                    confirmDelete('Seluruh Data Demonstrasi Lokal', () => {
                       StorageService.resetAll();
                       onShowToast('Sistem Direset', 'Data telah dikembalikan ke kondisi awal demonstrasi.', 'info');
-                      setTimeout(() => window.location.reload(), 800);
-                    }
-                  }}
+                      setTimeout(() => window.location.reload(), 600);
+                    })
+                  }
                   className="px-4 py-2.5 bg-stone-100 hover:bg-red-50 hover:text-red-700 text-slate-700 text-xs font-semibold rounded-xl border border-stone-200 flex items-center gap-2 cursor-pointer"
                 >
                   <RefreshCw className="w-4 h-4" />
@@ -1928,7 +1931,7 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({
               <button
                 onClick={() => {
                   setModalData(null);
-                  setFormInputs({ category: 'Modul Ajar', phase: 'Fase B', fileFormat: 'PDF' });
+                  setFormInputs({ category: 'Modul Ajar', gradeLevel: 'Fase B (Kelas 3-4)', fileFormat: 'PDF' });
                   setModalType('PERANGKAT_FORM');
                 }}
                 className="px-4 py-2 bg-rose-800 hover:bg-rose-900 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 shadow-sm cursor-pointer"
@@ -1994,7 +1997,20 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({
                           )}
                           <button
                             onClick={() => {
-                              onShowToast('Mengunduh Berkas', `${doc.title} (${doc.fileFormat})`, 'info');
+                              triggerDocumentDownload(
+                                `${doc.title}.${doc.fileFormat.toLowerCase()}.txt`,
+                                doc.title,
+                                {
+                                  Kategori: doc.category,
+                                  'Mata Pelajaran': doc.subject,
+                                  'Fase / Kelas': doc.gradeLevel,
+                                  Pengunggah: `${doc.uploaderName} (${doc.uploaderSchool})`,
+                                  'Format & Ukuran': `${doc.fileFormat} (${doc.fileSize})`,
+                                  'Link Drive': doc.driveUrl,
+                                  Deskripsi: doc.description,
+                                }
+                              );
+                              onShowToast('Berkas Diunduh', `${doc.title} (${doc.fileFormat}) berhasil diunduh.`, 'success');
                             }}
                             className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg cursor-pointer"
                             title="Unduh Berkas"
@@ -2194,7 +2210,21 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({
                       <td className="py-3 px-4 text-center">
                         <div className="flex items-center justify-center gap-1">
                           <button
-                            onClick={() => onShowToast('Mengunduh Arsip', adm.letterNumber, 'info')}
+                            onClick={() => {
+                              triggerDocumentDownload(
+                                `${adm.letterNumber}_${adm.title}.txt`,
+                                adm.title,
+                                {
+                                  'Nomor Berkas': adm.letterNumber,
+                                  Kategori: adm.category,
+                                  Tanggal: adm.date,
+                                  'Instansi Terkait': adm.senderOrRecipient,
+                                  Format: `${adm.fileFormat} (${adm.fileSize})`,
+                                  Status: adm.status,
+                                }
+                              );
+                              onShowToast('Arsip Diunduh', `${adm.letterNumber} berhasil diunduh.`, 'success');
+                            }}
                             className="p-1.5 text-slate-600 hover:text-emerald-700 hover:bg-emerald-50 rounded-lg cursor-pointer"
                             title="Unduh Berkas"
                           >
@@ -3119,13 +3149,14 @@ export const SuperAdminDashboard: React.FC<SuperAdminProps> = ({
                 <div>
                   <label className="block font-medium text-slate-700 mb-1">Fase / Tingkat</label>
                   <select
-                    defaultValue={modalData?.phase || 'Fase B'}
-                    onChange={(e) => setFormInputs({ ...formInputs, phase: e.target.value })}
+                    defaultValue={modalData?.gradeLevel || 'Fase B (Kelas 3-4)'}
+                    onChange={(e) => setFormInputs({ ...formInputs, gradeLevel: e.target.value })}
                     className="w-full px-3 py-2 border border-stone-300 rounded-xl focus:border-rose-700 focus:outline-none"
                   >
-                    <option value="Fase A">Fase A (Kelas 1 - 2)</option>
-                    <option value="Fase B">Fase B (Kelas 3 - 4)</option>
-                    <option value="Fase C">Fase C (Kelas 5 - 6)</option>
+                    <option value="Fase A (Kelas 1-2)">Fase A (Kelas 1 - 2)</option>
+                    <option value="Fase B (Kelas 3-4)">Fase B (Kelas 3 - 4)</option>
+                    <option value="Fase C (Kelas 5-6)">Fase C (Kelas 5 - 6)</option>
+                    <option value="Semua Fase">Semua Fase</option>
                   </select>
                 </div>
               </div>
@@ -3879,6 +3910,48 @@ CREATE POLICY "Allow Public Read Perangkat" ON public.perangkat_ajar FOR SELECT 
                   Tutup
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* IN-APP SUPER ADMIN DELETE CONFIRMATION MODAL */}
+      {deleteConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 shadow-2xl border border-stone-200 space-y-4 animate-in fade-in zoom-in-95">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-100 text-red-700 flex items-center justify-center shrink-0">
+                <AlertTriangle className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-slate-900 text-base">Konfirmasi Hapus / Reset</h3>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  Anda yakin ingin memproses tindakan untuk <strong>&ldquo;{deleteConfirm.name}&rdquo;</strong>? Aktivitas ini akan tercatat dalam Audit Log Super Admin.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-100">
+              <button
+                type="button"
+                onClick={() => setDeleteConfirm(null)}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-stone-100 cursor-pointer"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  const fn = deleteConfirm.callback;
+                  setDeleteConfirm(null);
+                  fn();
+                  onDataRefresh();
+                  setAuditLogs(StorageService.getAuditLogs());
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-red-700 hover:bg-red-800 text-white cursor-pointer"
+              >
+                Ya, Lanjutkan
+              </button>
             </div>
           </div>
         </div>

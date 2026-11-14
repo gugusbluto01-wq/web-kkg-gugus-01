@@ -2,17 +2,15 @@ import React, { useState, useMemo } from 'react';
 import {
   FolderLock,
   Search,
-  Filter,
   Download,
-  Upload,
   FileText,
-  FileCheck,
   PlusCircle,
   X,
   Calendar,
-  CheckCircle2,
+  Eye,
 } from 'lucide-react';
 import { DokumenAdministrasi, UserProfile, UserRole } from '../../types';
+import { triggerDocumentDownload } from '../../utils/downloadHelper';
 
 interface AdministrasiProps {
   dokumenList: DokumenAdministrasi[];
@@ -92,7 +90,20 @@ export const AdministrasiKKG: React.FC<AdministrasiProps> = ({
   };
 
   const handleDownload = (doc: DokumenAdministrasi) => {
-    onShowToast('Mengunduh Berkas Arsip', `${doc.letterNumber} (${doc.fileFormat}) sedang diproses.`, 'info');
+    triggerDocumentDownload(
+      `${doc.letterNumber}_${doc.title}.txt`,
+      doc.title,
+      {
+        'Nomor Berkas': doc.letterNumber,
+        Kategori: doc.category,
+        Tanggal: doc.date,
+        'Instansi Terkait': doc.senderOrRecipient,
+        Format: `${doc.fileFormat} (${doc.fileSize})`,
+        Status: doc.status,
+        Penandatangan: doc.signedBy,
+      }
+    );
+    onShowToast('Berkas Arsip Diunduh', `${doc.letterNumber} (${doc.fileFormat}) berhasil diunduh.`, 'success');
   };
 
   const canManage = ['super_admin', 'pengurus'].includes(currentRole);
@@ -223,14 +234,23 @@ export const AdministrasiKKG: React.FC<AdministrasiProps> = ({
                     </td>
 
                     <td className="py-3 px-4 text-center">
-                      <button
-                        onClick={() => handleDownload(doc)}
-                        className="px-2.5 py-1 text-xs font-medium text-rose-800 hover:bg-rose-50 rounded-lg flex items-center gap-1 mx-auto transition-colors cursor-pointer"
-                        title="Unduh Salinan Dokumen"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                        <span>Unduh</span>
-                      </button>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <button
+                          onClick={() => setPreviewDoc(doc)}
+                          className="p-1.5 text-slate-600 hover:text-rose-800 hover:bg-rose-50 rounded-lg transition-colors cursor-pointer"
+                          title="Pratinjau Detail Dokumen"
+                        >
+                          <Eye className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          onClick={() => handleDownload(doc)}
+                          className="px-2.5 py-1 text-xs font-medium text-rose-800 hover:bg-rose-50 rounded-lg flex items-center gap-1 transition-colors cursor-pointer"
+                          title="Unduh Salinan Dokumen"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Unduh</span>
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -371,6 +391,82 @@ export const AdministrasiKKG: React.FC<AdministrasiProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* Modal Pratinjau Dokumen Administrasi */}
+      {previewDoc && (
+        <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-stone-200 relative space-y-4 animate-in fade-in zoom-in-95">
+            <button
+              onClick={() => setPreviewDoc(null)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 p-1 cursor-pointer"
+            >
+              <X className="w-5 h-5" />
+            </button>
+
+            <div className="flex items-start gap-3">
+              <div className="w-11 h-11 rounded-xl bg-rose-100 text-rose-800 flex items-center justify-center shrink-0">
+                <FileText className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-[10px] font-semibold text-rose-800 bg-rose-50 px-2 py-0.5 rounded">
+                  {previewDoc.category}
+                </span>
+                <h3 className="font-bold text-slate-900 text-base leading-snug mt-1">
+                  {previewDoc.title}
+                </h3>
+                <p className="text-xs font-mono text-slate-500 mt-0.5">
+                  No: {previewDoc.letterNumber}
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-stone-50 rounded-xl space-y-2 text-xs text-slate-700">
+              <div className="flex justify-between">
+                <span className="text-slate-500">Tanggal Surat:</span>
+                <span className="font-medium">{previewDoc.date}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Instansi Terkait:</span>
+                <span className="font-medium text-right">{previewDoc.senderOrRecipient}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Format & Ukuran:</span>
+                <span className="font-mono font-medium">{previewDoc.fileFormat} ({previewDoc.fileSize})</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-slate-500">Status Berkas:</span>
+                <span className="font-semibold text-emerald-700">{previewDoc.status}</span>
+              </div>
+              {previewDoc.signedBy && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Penandatangan:</span>
+                  <span className="font-medium">{previewDoc.signedBy}</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-stone-100">
+              <button
+                type="button"
+                onClick={() => setPreviewDoc(null)}
+                className="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-stone-100 cursor-pointer"
+              >
+                Tutup
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handleDownload(previewDoc);
+                  setPreviewDoc(null);
+                }}
+                className="px-4 py-2 rounded-xl text-xs font-semibold bg-rose-800 hover:bg-rose-900 text-white flex items-center gap-1.5 cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>Unduh Salinan Arsip</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

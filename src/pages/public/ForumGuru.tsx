@@ -1,16 +1,15 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   MessageSquare,
   PlusCircle,
   Search,
-  Filter,
   Heart,
   Eye,
   Send,
   X,
-  User,
   Share2,
   ChevronLeft,
+  Lock,
 } from 'lucide-react';
 import { ForumTopic, UserProfile } from '../../types';
 
@@ -20,6 +19,8 @@ interface ForumGuruProps {
   onAddTopic: (topic: ForumTopic) => void;
   onAddComment: (topicId: string, content: string) => void;
   onShowToast: (message: string, subtitle?: string, type?: 'success' | 'info' | 'error') => void;
+  selectedTopic?: ForumTopic | null;
+  onSelectTopic?: (topic: ForumTopic | null) => void;
 }
 
 export const ForumGuru: React.FC<ForumGuruProps> = ({
@@ -28,12 +29,29 @@ export const ForumGuru: React.FC<ForumGuruProps> = ({
   onAddTopic,
   onAddComment,
   onShowToast,
+  selectedTopic,
+  onSelectTopic,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
   const [searchTerm, setSearchTerm] = useState('');
-  const [activeTopic, setActiveTopic] = useState<ForumTopic | null>(null);
+  const [internalTopic, setInternalTopic] = useState<ForumTopic | null>(null);
+  const [likedIds, setLikedIds] = useState<Record<string, boolean>>({});
   const [commentInput, setCommentInput] = useState('');
   const [isNewTopicModalOpen, setIsNewTopicModalOpen] = useState(false);
+
+  const activeTopic = selectedTopic !== undefined ? selectedTopic : internalTopic;
+  const setActiveTopic = (topic: ForumTopic | null) => {
+    setInternalTopic(topic);
+    if (onSelectTopic) {
+      onSelectTopic(topic);
+    }
+  };
+
+  useEffect(() => {
+    if (selectedTopic) {
+      setInternalTopic(selectedTopic);
+    }
+  }, [selectedTopic]);
 
   // New Topic Form
   const [newTitle, setNewTitle] = useState('');
@@ -65,6 +83,11 @@ export const ForumGuru: React.FC<ForumGuruProps> = ({
   const handlePostComment = (e: React.FormEvent) => {
     e.preventDefault();
     if (!commentInput.trim() || !activeTopic) return;
+    const latestTopic = topics.find((t) => t.id === activeTopic.id) || activeTopic;
+    if (latestTopic.isLocked) {
+      onShowToast('Diskusi Terkunci', 'Topik ini sedang dikunci oleh moderator/Super Admin.', 'error');
+      return;
+    }
     onAddComment(activeTopic.id, commentInput);
     setCommentInput('');
     onShowToast('Tanggapan Terkirim', 'Komentar Anda telah dimuat dalam thread diskusi.', 'success');
@@ -99,15 +122,28 @@ export const ForumGuru: React.FC<ForumGuruProps> = ({
     onShowToast('Topik Baru Diterbitkan', 'Diskusi Anda telah berhasil dipublikasikan di Forum Guru.', 'success');
   };
 
+  const handleToggleLike = (topicId: string) => {
+    setLikedIds((prev) => ({ ...prev, [topicId]: !prev[topicId] }));
+  };
+
+  const handleShareTopic = (topic: ForumTopic) => {
+    const shareText = `${topic.title} — Forum Guru KKG Gugus 01 Bluto (${window.location.href})`;
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(shareText).catch(() => {});
+    }
+    onShowToast('Tautan Disalin', `Topik "${topic.title}" siap dibagikan ke grup guru.`, 'info');
+  };
+
   // If viewing a single topic detail
   if (activeTopic) {
     const currentActive = topics.find((t) => t.id === activeTopic.id) || activeTopic;
+    const isLiked = !!likedIds[currentActive.id];
 
     return (
       <div className="max-w-4xl mx-auto px-4 sm:px-6 py-10 space-y-6">
         <button
           onClick={() => setActiveTopic(null)}
-          className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-rose-800 hover:text-rose-950 transition-colors"
+          className="inline-flex items-center gap-1.5 text-xs sm:text-sm font-semibold text-rose-800 hover:text-rose-950 transition-colors cursor-pointer"
         >
           <ChevronLeft className="w-4 h-4" />
           <span>Kembali ke Daftar Forum Guru</span>
@@ -115,28 +151,61 @@ export const ForumGuru: React.FC<ForumGuruProps> = ({
 
         <article className="bg-white border border-stone-200 rounded-2xl p-6 sm:p-8 shadow-sm space-y-6">
           <div className="space-y-3 pb-6 border-b border-stone-100">
-            <div className="flex items-center gap-2 text-xs text-slate-500">
-              <span className="font-semibold text-rose-800">{currentActive.category}</span>
-              <span>·</span>
-              <span>Diposting pada {currentActive.createdAt}</span>
-              <span>·</span>
-              <span>{currentActive.viewCount} kali dilihat</span>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs text-slate-500">
+                <span className="font-semibold text-rose-800">{currentActive.category}</span>
+                <span>·</span>
+                <span>Diposting pada {currentActive.createdAt}</span>
+                <span>·</span>
+                <span>{currentActive.viewCount} kali dilihat</span>
+              </div>
+              {currentActive.isLocked && (
+                <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-red-800 bg-red-50 border border-red-200 px-2.5 py-0.5 rounded-lg">
+                  <Lock className="w-3 h-3" />
+                  <span>Diskusi Terkunci</span>
+                </span>
+              )}
             </div>
 
             <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight leading-snug">
               {currentActive.title}
             </h1>
 
-            <div className="flex items-center gap-3 pt-2">
-              <img
-                src={currentActive.authorAvatar}
-                alt={currentActive.authorName}
-                className="w-10 h-10 rounded-full object-cover border border-stone-200"
-                referrerPolicy="no-referrer"
-              />
-              <div>
-                <div className="text-sm font-bold text-slate-900">{currentActive.authorName}</div>
-                <div className="text-xs text-slate-500">{currentActive.authorSchool}</div>
+            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
+              <div className="flex items-center gap-3">
+                <img
+                  src={currentActive.authorAvatar}
+                  alt={currentActive.authorName}
+                  className="w-10 h-10 rounded-full object-cover border border-stone-200"
+                  referrerPolicy="no-referrer"
+                />
+                <div>
+                  <div className="text-sm font-bold text-slate-900">{currentActive.authorName}</div>
+                  <div className="text-xs text-slate-500">{currentActive.authorSchool}</div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => handleToggleLike(currentActive.id)}
+                  className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer ${
+                    isLiked
+                      ? 'bg-rose-50 border-rose-300 text-rose-800'
+                      : 'bg-white border-stone-200 text-slate-600 hover:bg-stone-50'
+                  }`}
+                >
+                  <Heart className={`w-3.5 h-3.5 ${isLiked ? 'fill-rose-700 text-rose-700' : ''}`} />
+                  <span>{(currentActive.likesCount || 0) + (isLiked ? 1 : 0)} Apresiasi</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleShareTopic(currentActive)}
+                  className="px-3 py-1.5 rounded-xl border border-stone-200 bg-white hover:bg-stone-50 text-slate-600 text-xs font-semibold flex items-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>Bagikan</span>
+                </button>
               </div>
             </div>
           </div>
@@ -164,31 +233,40 @@ export const ForumGuru: React.FC<ForumGuruProps> = ({
             <span>Tanggapan & Diskusi ({currentActive.comments.length})</span>
           </h2>
 
-          {/* Form Tambah Komentar */}
-          <form onSubmit={handlePostComment} className="space-y-3 pb-6 border-b border-stone-100">
-            <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
-              <span>Menjawab sebagai:</span>
-              <strong className="text-slate-800">{currentUser.name}</strong>
-              <span>({currentUser.school})</span>
+          {/* Form Tambah Komentar atau Banner Terkunci */}
+          {currentActive.isLocked ? (
+            <div className="p-4 rounded-xl bg-red-50 border border-red-200 text-red-800 text-xs sm:text-sm flex items-center gap-2.5">
+              <Lock className="w-4 h-4 shrink-0" />
+              <span>
+                Topik diskusi ini telah dikunci oleh moderator KKG. Anda tetap dapat membaca arsip diskusi yang sudah masuk.
+              </span>
             </div>
-            <textarea
-              rows={3}
-              placeholder="Tuliskan gagasan, tanggapan, atau pengalaman pembelajaran Anda di sini..."
-              value={commentInput}
-              onChange={(e) => setCommentInput(e.target.value)}
-              required
-              className="w-full p-3 text-xs sm:text-sm border border-stone-300 rounded-xl focus:outline-none focus:border-rose-700 bg-stone-50/50"
-            ></textarea>
-            <div className="flex justify-end">
-              <button
-                type="submit"
-                className="px-4 py-2 bg-rose-800 hover:bg-rose-900 text-white text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-2 transition-colors shadow-sm cursor-pointer"
-              >
-                <Send className="w-3.5 h-3.5" />
-                <span>Kirim Tanggapan</span>
-              </button>
-            </div>
-          </form>
+          ) : (
+            <form onSubmit={handlePostComment} className="space-y-3 pb-6 border-b border-stone-100">
+              <div className="flex items-center gap-2 text-xs text-slate-500 mb-1">
+                <span>Menjawab sebagai:</span>
+                <strong className="text-slate-800">{currentUser.name}</strong>
+                <span>({currentUser.school})</span>
+              </div>
+              <textarea
+                rows={3}
+                placeholder="Tuliskan gagasan, tanggapan, atau pengalaman pembelajaran Anda di sini..."
+                value={commentInput}
+                onChange={(e) => setCommentInput(e.target.value)}
+                required
+                className="w-full p-3 text-xs sm:text-sm border border-stone-300 rounded-xl focus:outline-none focus:border-rose-700 bg-stone-50/50"
+              ></textarea>
+              <div className="flex justify-end">
+                <button
+                  type="submit"
+                  className="px-4 py-2 bg-rose-800 hover:bg-rose-900 text-white text-xs sm:text-sm font-semibold rounded-xl flex items-center gap-2 transition-colors shadow-sm cursor-pointer"
+                >
+                  <Send className="w-3.5 h-3.5" />
+                  <span>Kirim Tanggapan</span>
+                </button>
+              </div>
+            </form>
+          )}
 
           {/* List Komentar */}
           <div className="space-y-4">
